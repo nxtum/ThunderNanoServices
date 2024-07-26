@@ -25,7 +25,7 @@
 
 namespace Thunder{
 namespace Plugin{
-    class HelloWorld : public PluginHost::IPlugin, public PluginHost::JSONRPC, public Exchange::IHelloWorld{
+    class HelloWorld : public PluginHost::IPlugin, public PluginHost::JSONRPC{
     public:
         HelloWorld(const HelloWorld&) = delete;
         HelloWorld& operator=(const HelloWorld&) = delete;
@@ -33,7 +33,9 @@ namespace Plugin{
         HelloWorld()
         : _service(nullptr),
           _impl(nullptr),
-          _connectionId(0)
+          _connectionId(0),
+          _connectionNotification(this),
+          _helloNotification(this)
         {
         }
 
@@ -44,7 +46,7 @@ namespace Plugin{
         BEGIN_INTERFACE_MAP(HelloWorld)
         INTERFACE_ENTRY(PluginHost::IPlugin)
         INTERFACE_ENTRY(PluginHost::IDispatcher)
-        INTERFACE_ENTRY(Exchange::IHelloWorld);
+        INTERFACE_AGGREGATE(Exchange::IHelloWorld, _impl);
         END_INTERFACE_MAP
 
         void SendMessage();
@@ -54,17 +56,78 @@ namespace Plugin{
         void Deinitialize(PluginHost::IShell* service) override;
         string Information() const override;
 
-        // Exchange::IHelloWorld Methods
+        
+    private:
 
-        uint32_t PrintStuff(const string &randomWord) const override;
-        
+        class ConnectionNotification : public RPC::IRemoteConnection::INotification {
+        public:
+            explicit ConnectionNotification(HelloWorld* parent)
+                : _parent(*parent)
+            {
+                ASSERT(parent != nullptr);
+            }
+
+            ~ConnectionNotification() override = default;
+
+            ConnectionNotification() = delete;
+            ConnectionNotification(const ConnectionNotification&) = delete;
+            ConnectionNotification& operator=(const ConnectionNotification&) = delete;
+
+            void Activated(RPC::IRemoteConnection* connection) override
+            {
+            }
+
+            void Deactivated(RPC::IRemoteConnection* connection) override
+            {
+                _parent.Deactivated(connection);
+            }
+
+            BEGIN_INTERFACE_MAP(ConnectionNotification)
+                INTERFACE_ENTRY(RPC::IRemoteConnection::INotification)
+            END_INTERFACE_MAP
+
         private:
+            HelloWorld& _parent;
+        };
         
-            PluginHost::IShell* _service;
-            Exchange::IHelloWorld* _impl;
-            uint32_t _connectionId;
+        class HelloNotification : public Exchange::IHelloWorld::INotification{ 
+          public:
+            explicit HelloNotification(HelloWorld *parent) 
+              : _parent(*parent)
+              {
+                ASSERT(parent != nullptr);
+              }
+
+            ~HelloNotification() override = default;
+
+            HelloNotification() = delete;
+            HelloNotification(const HelloNotification&) = delete;
+            HelloNotification& operator=(const HelloNotification&) = delete;
+
+            void Printed(const string& word) const override
+            {
+              std::cout << "calledbeforejhello";
+              Exchange::JHelloWorld::Event::Printed(_parent, word);
+              
+            }
+
+            BEGIN_INTERFACE_MAP(VolumeNotification)
+                INTERFACE_ENTRY(Exchange::IHelloWorld::INotification)
+            END_INTERFACE_MAP
+
+          private:
+            HelloWorld& _parent;            
+        };
+
+        void Deactivated(RPC::IRemoteConnection* connection);
+                
+        PluginHost::IShell* _service;
+        Exchange::IHelloWorld* _impl;
+        Core::SinkType<HelloNotification> _helloNotification;
+        Core::SinkType<ConnectionNotification> _connectionNotification;
+        uint32_t _connectionId;
                     
     };
 
 } // namespace Plugin
-} // namespace ThunderS
+} // namespace Thunder
